@@ -2,7 +2,6 @@ package socket
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -22,7 +21,7 @@ func (c *Client) Start(ctx context.Context) error {
 			// Handle websocket connection error
 			if websocket.IsCloseError(err) && c.attempts < c.maxAttempts {
 				c.attempts++
-				log.Printf("retrying attempt %d\n", c.attempts)
+				c.logger.Info("connection retry attempt %d\n", c.attempts)
 				time.Sleep(5 * time.Second)
 				continue
 			}
@@ -40,19 +39,19 @@ func (c *Client) start(ctx context.Context) error {
 
 	ctx, cancel := context.WithCancelCause(ctx)
 
-	// Ping to verify open connection
-	go c.checkPing(ctx)
-
 	// Listeners
-	go c.listen(ctx)
+	go c.handlePings(ctx)
 	go c.handleListen(ctx)
-	go c.handleBroadcast(ctx)
+	go c.handleRead(ctx)
+	go c.handleSend(ctx)
 	go c.handleErrors(ctx, cancel)
 
 	<-ctx.Done()
 
 	// Clean up
 	c.conn.Close()
+	c.isConnOpened = false
+	c.logger.Info("connection failed")
 
 	return context.Cause(ctx)
 }

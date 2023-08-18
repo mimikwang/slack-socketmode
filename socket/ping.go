@@ -2,7 +2,6 @@ package socket
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -20,10 +19,10 @@ func pingHandlerFunc(c *Client) func(string) error {
 	}
 }
 
-// checkPing is a listener that checks to make sure that our connection is healthy.
-func (c *Client) checkPing(ctx context.Context) {
-	defer log.Println("shut down checkPing")
-	log.Println("start checkPing")
+// handlePings is a listener that checks to make sure that our connection is healthy.
+func (c *Client) handlePings(ctx context.Context) {
+	defer c.logger.Info("shut down handlePings")
+	c.logger.Info("start handlePings")
 	for {
 		select {
 		case <-ctx.Done():

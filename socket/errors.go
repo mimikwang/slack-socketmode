@@ -3,7 +3,6 @@ package socket
 import (
 	"context"
 	"fmt"
-	"log"
 )
 
 var (
@@ -15,8 +14,8 @@ var (
 
 // handleErrors listens for errors and calls the cancel function when one is received.
 func (c *Client) handleErrors(ctx context.Context, cancel context.CancelCauseFunc) {
-	defer log.Println("shut down handleErrors")
-	log.Println("start handleErrors")
+	defer c.logger.Info("shut down handleErrors")
+	c.logger.Info("start handleErrors")
 	for {
 		select {
 		case <-ctx.Done():
