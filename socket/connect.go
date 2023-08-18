@@ -2,7 +2,6 @@ package socket
 
 import (
 	"context"
-	"log"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -11,7 +10,7 @@ import (
 // connect grabs the `ws` url using the webapi to make the call and opens up a websocket
 // connection.
 func (c *Client) connect(ctx context.Context) error {
-	log.Println("connecting")
+	c.logger.Info("connecting")
 	_, url, err := c.Api.StartSocketModeContext(ctx)
 	if err != nil {
 		return err
@@ -28,6 +27,7 @@ func (c *Client) connect(ctx context.Context) error {
 
 	c.pingTimer = time.NewTimer(c.maxPingInterval)
 	c.conn.SetPingHandler(pingHandlerFunc(c))
-	log.Println("connected")
+	c.logger.Info("connected")
+	c.isConnOpened = true
 	return nil
 }

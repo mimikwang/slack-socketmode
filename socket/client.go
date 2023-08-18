@@ -5,6 +5,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/slack-go/slack"
+	"golang.org/x/exp/slog"
 )
 
 const (
@@ -18,7 +19,11 @@ type Client struct {
 	Api *slack.Client
 
 	// Websocket client
-	conn *websocket.Conn
+	conn         *websocket.Conn
+	isConnOpened bool
+
+	// Logger
+	logger *slog.Logger
 
 	// Max time between pings before timing out
 	maxPingInterval time.Duration
@@ -41,7 +46,9 @@ type Client struct {
 // New creates a new socketmode client given a slack api client
 func New(api *slack.Client, opts ...Opt) *Client {
 	c := &Client{
-		Api:             api,
+		Api:    api,
+		logger: slog.Default(),
+
 		maxPingInterval: defaultMaxPingInterval,
 		maxAttempts:     defaultMaxAttempts,
 
