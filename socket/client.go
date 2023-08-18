@@ -19,8 +19,8 @@ type Client struct {
 	Api *slack.Client
 
 	// Websocket client
-	conn         *websocket.Conn
-	isConnOpened bool
+	conn      *websocket.Conn
+	isStarted bool
 
 	// Logger
 	logger *slog.Logger
@@ -37,10 +37,8 @@ type Client struct {
 	maxAttempts int
 	attempts    int
 
-	readCh   chan *readPackage
-	listenCh chan *Request
-	sendCh   chan *sendPackage
-	errCh    chan error
+	sendCh chan *sendPackage
+	errCh  chan error
 }
 
 // New creates a new socketmode client given a slack api client
@@ -52,10 +50,8 @@ func New(api *slack.Client, opts ...Opt) *Client {
 		maxPingInterval: defaultMaxPingInterval,
 		maxAttempts:     defaultMaxAttempts,
 
-		readCh:   make(chan *readPackage),
-		listenCh: make(chan *Request),
-		sendCh:   make(chan *sendPackage),
-		errCh:    make(chan error),
+		sendCh: make(chan *sendPackage),
+		errCh:  make(chan error),
 	}
 	for _, opt := range opts {
 		opt.Apply(c)
