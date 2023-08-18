@@ -28,6 +28,5 @@ func (c *Client) connect(ctx context.Context) error {
 	c.pingTimer = time.NewTimer(c.maxPingInterval)
 	c.conn.SetPingHandler(pingHandlerFunc(c))
 	c.logger.Info("connected")
-	c.isConnOpened = true
 	return nil
 }

@@ -10,6 +10,7 @@ var (
 	ErrDisconnectRequest       = fmt.Errorf("disconnected event")
 	ErrNilRequest              = fmt.Errorf("nil request")
 	ErrUnrecognizedRequestType = fmt.Errorf("unrecognized request type")
+	ErrConnClosed              = fmt.Errorf("connection closed")
 )
 
 // handleErrors listens for errors and calls the cancel function when one is received.

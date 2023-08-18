@@ -31,26 +31,31 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 }
 
+// Started returns true of the client has started
+func (c *Client) Started() bool {
+	return c.isStarted
+}
+
 func (c *Client) start(ctx context.Context) error {
 	if err := c.connect(ctx); err != nil {
 		return err
 	}
-	c.attempts = 0
 
 	ctx, cancel := context.WithCancelCause(ctx)
 
 	// Listeners
 	go c.handlePings(ctx)
-	go c.handleListen(ctx)
-	go c.handleRead(ctx)
 	go c.handleSend(ctx)
 	go c.handleErrors(ctx, cancel)
+
+	c.isStarted = true
+	c.attempts = 0
 
 	<-ctx.Done()
 
 	// Clean up
 	c.conn.Close()
-	c.isConnOpened = false
+	c.isStarted = false
 	c.logger.Info("connection failed")
 
 	return context.Cause(ctx)
