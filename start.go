@@ -2,13 +2,17 @@ package socketmode
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	"github.com/gorilla/websocket"
+	"golang.org/x/exp/slog"
 )
 
 const (
 	defaultWaitTimeBetweenRetries = 5 * time.Second
+	defaultPingDeadline           = 30 * time.Second
+	defaultHandlePingInterval     = 5 * time.Second
 )
 
 // Start starts the client.  It contains logic for retries.
@@ -19,18 +23,11 @@ func (c *Client) Start(ctx context.Context) error {
 			return context.Cause(ctx)
 		default:
 			if err := c.start(ctx); err != nil {
-				// Check for internal library error types
-				switch err {
-				case ErrDisconnectRequest:
-					// Retry since this is slack's way of telling the client to retry connection
-					time.Sleep(defaultWaitTimeBetweenRetries)
-					continue
-				}
-
 				// Handle websocket connection error
-				if websocket.IsUnexpectedCloseError(err) && c.retries < c.maxRetries {
+				if c.retries < c.maxRetries {
 					c.retries++
-					c.logger.Info("connection retry attempt %d\n", c.retries)
+					c.logger.Info("failed to initialize connection", slog.String("error", err.Error()))
+					c.logger.Info(fmt.Sprintf("connection retry attempt %d", c.retries))
 					time.Sleep(defaultWaitTimeBetweenRetries)
 					continue
 				}
@@ -55,22 +52,23 @@ func (c *Client) start(ctx context.Context) error {
 	go c.handleErrors(ctx, cancel)
 
 	c.isStarted = true
-	c.retries = 0
+	c.logger.Info("client started successfully")
 
 	<-ctx.Done()
 	c.isStarted = false // This needs to be set before connection is closed
 
 	// Close connection
 	c.conn.Close()
-	c.logger.Info("connection failed")
 
-	return context.Cause(ctx)
+	err := context.Cause(ctx)
+	c.logger.Info("connection failed with error", slog.Any("error", err))
+	return err
 }
 
 // connect grabs the `ws` url using the webapi to make the call and opens up a websocket
 // connection.
 func (c *Client) connect(ctx context.Context) error {
-	c.logger.Info("connecting")
+	c.logger.Info("initializing websocket connection")
 	_, url, err := c.Api.StartSocketModeContext(ctx)
 	if err != nil {
 		return err
@@ -80,13 +78,42 @@ func (c *Client) connect(ctx context.Context) error {
 		url += "&debug_reconnects=true"
 	}
 
-	c.conn, _, err = websocket.DefaultDialer.Dial(url, nil)
+	c.conn, _, err = c.dialer.Dial(url, nil)
 	if err != nil {
 		return err
 	}
 
 	c.pingTimer = time.NewTimer(c.maxPingInterval)
 	c.conn.SetPingHandler(pingHandlerFunc(c))
-	c.logger.Info("connected")
+	c.logger.Info("successfully performed websocket handshake")
 	return nil
+}
+
+// pingHandlerFunc defines the logic of how to handle a ping
+func pingHandlerFunc(c *Client) func(string) error {
+	return func(h string) error {
+		c.retries = 0
+		if !c.pingTimer.Stop() {
+			<-c.pingTimer.C
+		}
+		c.pingTimer.Reset(c.maxPingInterval)
+
+		return c.conn.WriteControl(websocket.PongMessage, []byte(h), time.Now().Add(defaultPingDeadline))
+	}
+}
+
+// handlePings is a listener that checks to make sure that our connection is healthy.
+func (c *Client) handlePings(ctx context.Context) {
+	defer c.logger.Info("shutting down handlePings listener")
+	c.logger.Info("starting handlePings listener")
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-c.pingTimer.C:
+			c.errCh <- ErrPingTimedOut
+		default:
+			time.Sleep(defaultHandlePingInterval)
+		}
+	}
 }
