@@ -1,4 +1,4 @@
-package socket
+package socketmode
 
 // Close cleans up resources
 func (c *Client) Close() error {

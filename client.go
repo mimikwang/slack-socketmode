@@ -1,4 +1,4 @@
-package socket
+package socketmode
 
 import (
 	"time"
@@ -43,7 +43,7 @@ type Client struct {
 }
 
 // New creates a new socketmode client given a slack api client
-func New(api *slack.Client, opts ...opt) *Client {
+func NewClient(api *slack.Client, opts ...opt) *Client {
 	c := &Client{
 		Api:    api,
 		logger: slog.Default(),

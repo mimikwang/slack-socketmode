@@ -1,4 +1,4 @@
-package socket
+package socketmode
 
 import (
 	"context"
@@ -14,23 +14,28 @@ const (
 // Start starts the client.  It contains logic for retries.
 func (c *Client) Start(ctx context.Context) error {
 	for {
-		if err := c.start(ctx); err != nil {
-			// Check for internal library error types
-			switch err {
-			case ErrDisconnectRequest:
-				// Retry since this is slack's way of telling the client to retry connection
-				continue
-			}
+		select {
+		case <-ctx.Done():
+			return context.Cause(ctx)
+		default:
+			if err := c.start(ctx); err != nil {
+				// Check for internal library error types
+				switch err {
+				case ErrDisconnectRequest:
+					// Retry since this is slack's way of telling the client to retry connection
+					continue
+				}
 
-			// Handle websocket connection error
-			if websocket.IsCloseError(err) && c.retries < c.maxRetries {
-				c.retries++
-				c.logger.Info("connection retry attempt %d\n", c.retries)
-				time.Sleep(defaultWaitTimeBetweenRetries)
-				continue
-			}
+				// Handle websocket connection error
+				if websocket.IsCloseError(err) && c.retries < c.maxRetries {
+					c.retries++
+					c.logger.Info("connection retry attempt %d\n", c.retries)
+					time.Sleep(defaultWaitTimeBetweenRetries)
+					continue
+				}
 
-			return err
+				return err
+			}
 		}
 	}
 }
