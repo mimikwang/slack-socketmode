@@ -7,6 +7,10 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+const (
+	defaultWaitTimeBetweenRetries = 5 * time.Second
+)
+
 // Start starts the client.  It contains logic for retries.
 func (c *Client) Start(ctx context.Context) error {
 	for {
@@ -19,21 +23,16 @@ func (c *Client) Start(ctx context.Context) error {
 			}
 
 			// Handle websocket connection error
-			if websocket.IsCloseError(err) && c.attempts < c.maxAttempts {
-				c.attempts++
-				c.logger.Info("connection retry attempt %d\n", c.attempts)
-				time.Sleep(5 * time.Second)
+			if websocket.IsCloseError(err) && c.retries < c.maxRetries {
+				c.retries++
+				c.logger.Info("connection retry attempt %d\n", c.retries)
+				time.Sleep(defaultWaitTimeBetweenRetries)
 				continue
 			}
 
 			return err
 		}
 	}
-}
-
-// Started returns true of the client has started
-func (c *Client) Started() bool {
-	return c.isStarted
 }
 
 func (c *Client) start(ctx context.Context) error {
@@ -44,18 +43,19 @@ func (c *Client) start(ctx context.Context) error {
 	ctx, cancel := context.WithCancelCause(ctx)
 
 	// Listeners
+	go c.handleRead(ctx)
 	go c.handlePings(ctx)
 	go c.handleSend(ctx)
 	go c.handleErrors(ctx, cancel)
 
 	c.isStarted = true
-	c.attempts = 0
+	c.retries = 0
 
 	<-ctx.Done()
+	c.isStarted = false // This needs to be set before connection is closed
 
-	// Clean up
+	// Close connection
 	c.conn.Close()
-	c.isStarted = false
 	c.logger.Info("connection failed")
 
 	return context.Cause(ctx)

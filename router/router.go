@@ -19,6 +19,10 @@ func New(clt *socket.Client) *Router {
 	}
 }
 
+func (r *Router) Close() error {
+	return r.Client.Close()
+}
+
 func (r *Router) routeEvent(evt *socket.Event) {
 	if handlers, found := r.handlers[evt.Request.Type]; found {
 		for _, handler := range handlers {

@@ -24,8 +24,8 @@ type sendPackage struct {
 //
 // More info: https://pkg.go.dev/github.com/gorilla/websocket@v1.4.2#hdr-Concurrency
 func (c *Client) handleSend(ctx context.Context) {
-	defer c.logger.Info("shut down handleSend")
-	c.logger.Info("start handleSend")
+	defer c.logger.Debug("shut down handleSend")
+	c.logger.Debug("start handleSend")
 	for {
 		select {
 		case <-ctx.Done():

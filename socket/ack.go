@@ -6,7 +6,7 @@ import (
 	"golang.org/x/exp/slog"
 )
 
-// Ack sends an acknowledge response to slack
+// Ack sends an acknowledge response to slack.  This can be called concurrently.
 func (c *Client) Ack(req *Request, payload any) error {
 	bytes, err := json.Marshal(payload)
 	if err != nil {
