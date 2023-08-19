@@ -1,6 +1,7 @@
 package socketmode
 
 import (
+	"os"
 	"time"
 
 	"github.com/gorilla/websocket"
@@ -43,7 +44,7 @@ type Client struct {
 }
 
 // New creates a new socketmode client given a slack api client
-func NewClient(api *slack.Client, opts ...opt) *Client {
+func NewClient(api *slack.Client, opts ...clientOpt) *Client {
 	c := &Client{
 		Api:    api,
 		logger: slog.Default(),
@@ -59,4 +60,48 @@ func NewClient(api *slack.Client, opts ...opt) *Client {
 		opt.apply(c)
 	}
 	return c
+}
+
+// clientOpt defines input options for Client
+type clientOpt interface {
+	apply(*Client)
+}
+
+// OptDebugReconnects sets the `debugReconnects` flag to true.
+type OptDebugReconnects struct{}
+
+func (o OptDebugReconnects) apply(c *Client) {
+	c.debugReconnects = true
+}
+
+// OptLogLevel sets the log level
+type OptLogLevel struct {
+	Level slog.Level
+}
+
+func (o OptLogLevel) apply(c *Client) {
+	handler := slog.NewTextHandler(
+		os.Stdout,
+		&slog.HandlerOptions{
+			Level: o.Level,
+		})
+	c.logger = slog.New(handler)
+}
+
+// OptMaxRetries sets the maximum times to retry connection.  0 or negative values will be ignored.
+type OptMaxRetries struct {
+	MaxRetires int
+}
+
+func (o OptMaxRetries) apply(c *Client) {
+	if o.MaxRetires <= 0 {
+		return
+	}
+	c.maxRetries = o.MaxRetires
+}
+
+// Close cleans up resources
+func (c *Client) Close() error {
+	c.isStarted = false
+	return c.conn.Close()
 }
