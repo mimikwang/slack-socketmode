@@ -1,4 +1,4 @@
-package socket
+package socketmode
 
 import (
 	"encoding/json"
@@ -7,16 +7,23 @@ import (
 )
 
 // Ack sends an acknowledge response to slack.  This can be called concurrently.
-func (c *Client) Ack(req *Request, payload any) error {
+func (c *Client) Ack(evt *Event, payload any) error {
+	if evt == nil {
+		return ErrNilRequest
+	}
+
 	bytes, err := json.Marshal(payload)
 	if err != nil {
 		return err
 	}
 
-	resp := newResponse(req, bytes)
+	resp := newResponse(&evt.Request, bytes)
 	if err := c.send(resp); err != nil {
 		return err
 	}
+
+	// Each event should only be acknowledged once
+	evt.cancel()
 	c.logger.Debug("acknowledged", slog.Any("payload", resp))
 	return nil
 }

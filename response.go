@@ -1,4 +1,4 @@
-package socket
+package socketmode
 
 import "encoding/json"
 

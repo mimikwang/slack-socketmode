@@ -1,4 +1,4 @@
-package socket
+package socketmode
 
 import (
 	"context"
@@ -13,6 +13,8 @@ type Event struct {
 	Request Request
 	Data    any
 	Context context.Context
+
+	cancel context.CancelFunc
 }
 
 // newEvent constructs an Event given a request.
@@ -43,5 +45,7 @@ func newEvent(req *Request, ctx context.Context) (*Event, error) {
 		}
 	}
 
-	return &Event{Request: *req, Data: data, Context: ctx}, nil
+	ctx, cancel := context.WithCancel(ctx)
+
+	return &Event{Request: *req, Data: data, Context: ctx, cancel: cancel}, nil
 }
