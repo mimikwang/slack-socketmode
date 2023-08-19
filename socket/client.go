@@ -10,7 +10,7 @@ import (
 
 const (
 	defaultMaxPingInterval = 30 * time.Second
-	defaultMaxAttempts     = 5
+	defaultMaxRetries      = 5
 )
 
 // Client interacts with slack in socketmode
@@ -33,28 +33,30 @@ type Client struct {
 	// More details here: https://api.slack.com/apis/connections/socket#connect
 	debugReconnects bool
 
-	// Maximum attempts at reconnecting
-	maxAttempts int
-	attempts    int
+	// Maximum attempts at retrying reconnecting
+	maxRetries int
+	retries    int
 
+	readCh chan *readPackage
 	sendCh chan *sendPackage
 	errCh  chan error
 }
 
 // New creates a new socketmode client given a slack api client
-func New(api *slack.Client, opts ...Opt) *Client {
+func New(api *slack.Client, opts ...opt) *Client {
 	c := &Client{
 		Api:    api,
 		logger: slog.Default(),
 
 		maxPingInterval: defaultMaxPingInterval,
-		maxAttempts:     defaultMaxAttempts,
+		maxRetries:      defaultMaxRetries,
 
+		readCh: make(chan *readPackage),
 		sendCh: make(chan *sendPackage),
 		errCh:  make(chan error),
 	}
 	for _, opt := range opts {
-		opt.Apply(c)
+		opt.apply(c)
 	}
 	return c
 }
