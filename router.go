@@ -2,15 +2,20 @@ package socketmode
 
 import (
 	"context"
+	"fmt"
 
-	"github.com/slack-go/slack"
-	"github.com/slack-go/slack/slackevents"
 	"golang.org/x/exp/slog"
+)
+
+const (
+	defaultParrallel = 5
 )
 
 // Router routes incoming requests from slack
 type Router struct {
 	Client *Client
+
+	parallel int
 
 	middlewares          []Middleware
 	handlers             map[RequestType][]Handler
@@ -22,6 +27,7 @@ type Router struct {
 func NewRouter(clt *Client) *Router {
 	return &Router{
 		Client:               clt,
+		parallel:             defaultParrallel,
 		middlewares:          []Middleware{},
 		handlers:             map[RequestType][]Handler{},
 		slashCommandHandlers: map[string][]Handler{},
@@ -29,90 +35,59 @@ func NewRouter(clt *Client) *Router {
 	}
 }
 
+// routerOpt defines options for Router
+type routerOpt interface {
+	apply(*Router)
+}
+
+// OptParralel sets the number of concurrent workers for the router.  This is ignored if the number
+// is 0 or negative.
+type OptParralel struct {
+	Parralel int
+}
+
+func (o OptParralel) apply(r *Router) {
+	if o.Parralel <= 0 {
+		return
+	}
+	r.parallel = o.Parralel
+}
+
 // Start listening to incoming requests
 func (r *Router) Start(ctx context.Context) error {
 	r.initMiddlewares()
 	go r.Client.Start(ctx)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return context.Cause(ctx)
-		default:
-			evt, err := r.Client.Read()
-			if err != nil {
-				return err
+	ctx, cancel := context.WithCancelCause(ctx)
+	for i := 0; i < r.parallel; i++ {
+		r.Client.logger.Debug(fmt.Sprintf("starting router worker %d", i))
+		go func(i int, ctx context.Context, cancel context.CancelCauseFunc) {
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+					evt, err := r.Client.Read()
+					if err != nil {
+						cancel(err)
+					}
+					r.Client.logger.Debug(fmt.Sprintf("event routed by worker %d", i))
+					r.Client.logger.Debug("route event", slog.Any("event", evt))
+					if evt == nil {
+						r.Client.logger.Debug("router got nil event")
+						return
+					}
+					r.route(evt)
+				}
 			}
-			r.Client.logger.Debug("route event", slog.Any("event", evt))
-			r.route(evt)
-		}
+		}(i, ctx, cancel)
 	}
+
+	<-ctx.Done()
+	return context.Cause(ctx)
 }
 
 // Close cleans up resources
 func (r *Router) Close() error {
 	return r.Client.Close()
-}
-
-func (r *Router) route(evt *Event) {
-	if r.routeEvent(evt) {
-		return
-	}
-	if r.routeSlashCommand(evt) {
-		return
-	}
-	if r.routeEventsAPI(evt) {
-		return
-	}
-}
-
-func (r *Router) routeEvent(evt *Event) bool {
-	if handlers, found := r.handlers[evt.Request.Type]; found {
-		applyHandlers(evt, r.Client, handlers)
-	}
-	return false
-}
-
-func (r *Router) routeSlashCommand(evt *Event) bool {
-	if evt.Request.Type != RequestTypeSlashCommands {
-		return false
-	}
-
-	data, ok := evt.Data.(*slack.SlashCommand)
-	if !ok {
-		return false
-	}
-
-	if handlers, found := r.slashCommandHandlers[data.Command]; found {
-		applyHandlers(evt, r.Client, handlers)
-	}
-	return false
-}
-
-func (r *Router) routeEventsAPI(evt *Event) bool {
-	if evt.Request.Type != RequestTypeEventsAPI {
-		return false
-	}
-
-	data, ok := evt.Data.(*slackevents.EventsAPIEvent)
-	if !ok {
-		return false
-	}
-
-	if handlers, found := r.eventsAPIHandlers[data.InnerEvent.Type]; found {
-		applyHandlers(evt, r.Client, handlers)
-	}
-	return false
-}
-
-func applyHandlers(evt *Event, clt *Client, handlers []Handler) bool {
-	for _, handler := range handlers {
-		select {
-		case <-evt.Context.Done():
-			return true
-		default:
-			handler(evt, clt)
-		}
-	}
-	return false
 }
