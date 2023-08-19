@@ -15,8 +15,8 @@ var (
 
 // handleErrors listens for errors and calls the cancel function when one is received.
 func (c *Client) handleErrors(ctx context.Context, cancel context.CancelCauseFunc) {
-	defer c.logger.Info("shut down handleErrors")
-	c.logger.Info("start handleErrors")
+	defer c.logger.Info("shutting down handleErrors listener")
+	c.logger.Info("starting handleErrors listener")
 	for {
 		select {
 		case <-ctx.Done():

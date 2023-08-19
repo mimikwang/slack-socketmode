@@ -55,36 +55,55 @@ func (o OptParralel) apply(r *Router) {
 
 // Start listening to incoming requests
 func (r *Router) Start(ctx context.Context) error {
+	slog.Info("starting router")
 	r.initMiddlewares()
-	go r.Client.Start(ctx)
+	routerCtx, cancel := context.WithCancelCause(ctx)
 
-	ctx, cancel := context.WithCancelCause(ctx)
+	go func(cancel context.CancelCauseFunc) {
+		if err := r.Client.Start(ctx); err != nil {
+			cancel(err)
+		}
+	}(cancel)
+
 	for i := 0; i < r.parallel; i++ {
-		r.Client.logger.Debug(fmt.Sprintf("starting router worker %d", i))
-		go func(i int, ctx context.Context, cancel context.CancelCauseFunc) {
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				default:
-					evt, err := r.Client.Read()
-					if err != nil {
-						cancel(err)
-					}
-					r.Client.logger.Debug(fmt.Sprintf("event routed by worker %d", i))
-					r.Client.logger.Debug("route event", slog.Any("event", evt))
-					if evt == nil {
-						r.Client.logger.Debug("router got nil event")
-						return
-					}
-					r.route(evt)
-				}
-			}
-		}(i, ctx, cancel)
+		go r.startWorker(i, routerCtx)
 	}
 
-	<-ctx.Done()
-	return context.Cause(ctx)
+	slog.Info("router started successfully")
+	<-routerCtx.Done()
+
+	err := context.Cause(routerCtx)
+	slog.Error("router stopped with error", slog.String("error", err.Error()))
+	return err
+}
+
+func (r *Router) startWorker(i int, ctx context.Context) {
+	defer r.Client.logger.Info(fmt.Sprintf("shutting down router worker %d", i))
+	r.Client.logger.Info(fmt.Sprintf("starting router worker %d", i))
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			evt, err := r.Client.Read()
+			if err != nil {
+				r.Client.logger.Debug("client read error", slog.Any("error", err))
+				continue
+			}
+
+			r.Client.logger.Info(fmt.Sprintf("event routed by worker %d", i))
+			if evt == nil {
+				r.Client.logger.Info("router got nil event")
+				continue
+			}
+			r.Client.logger.Debug(
+				"route event",
+				slog.Any("event_type", evt.Request.Type),
+				slog.Any("event_data", evt.Data),
+			)
+			r.route(evt)
+		}
+	}
 }
 
 // Close cleans up resources

@@ -21,6 +21,7 @@ type Client struct {
 
 	// Websocket client
 	conn      *websocket.Conn
+	dialer    *websocket.Dialer
 	isStarted bool
 
 	// Logger
@@ -48,6 +49,7 @@ func NewClient(api *slack.Client, opts ...clientOpt) *Client {
 	c := &Client{
 		Api:    api,
 		logger: slog.Default(),
+		dialer: websocket.DefaultDialer,
 
 		maxPingInterval: defaultMaxPingInterval,
 		maxRetries:      defaultMaxRetries,
@@ -100,8 +102,25 @@ func (o OptMaxRetries) apply(c *Client) {
 	c.maxRetries = o.MaxRetires
 }
 
+// OptHandshakeTimeout sets a handshake time out.  0 or negative values will be ignored.
+type OptHandshakeTimeout struct {
+	Timeout time.Duration
+}
+
+func (o OptHandshakeTimeout) apply(c *Client) {
+	if o.Timeout <= 0 {
+		return
+	}
+	c.dialer = &websocket.Dialer{
+		HandshakeTimeout: o.Timeout,
+	}
+}
+
 // Close cleans up resources
 func (c *Client) Close() error {
 	c.isStarted = false
+	if c.conn == nil {
+		return nil
+	}
 	return c.conn.Close()
 }

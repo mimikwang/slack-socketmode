@@ -17,7 +17,8 @@ const (
 // Request is the incoming requests from slack
 type Request struct {
 	Type            RequestType     `json:"type"`
-	NumConnections  int             `json:"num_connects"`
+	Reason          string          `json:"reason"`
+	NumConnections  int             `json:"num_connections"`
 	DebugInfo       DebugInfo       `json:"debug_info"`
 	ConnectionInfo  ConnectionInfo  `json:"connection_info"`
 	EnvelopeId      string          `json:"envelope_id"`

@@ -25,7 +25,11 @@ func (c *Client) Ack(evt *Event, payload any) error {
 
 	// Each event should only be acknowledged once
 	evt.cancel()
-	c.logger.Debug("acknowledged", slog.Any("payload", resp))
+	c.logger.Debug(
+		"acknowledged",
+		slog.Any("envelope_id", resp.EnvelopeId),
+		slog.Any("payload", string(resp.Payload)),
+	)
 	return nil
 }
 
@@ -51,8 +55,8 @@ type sendPackage struct {
 //
 // More info: https://pkg.go.dev/github.com/gorilla/websocket@v1.4.2#hdr-Concurrency
 func (c *Client) handleSend(ctx context.Context) {
-	defer c.logger.Debug("shut down handleSend")
-	c.logger.Debug("start handleSend")
+	defer c.logger.Info("shutting down handleSend listener")
+	c.logger.Info("starting handleSend listener")
 	for {
 		select {
 		case <-ctx.Done():
