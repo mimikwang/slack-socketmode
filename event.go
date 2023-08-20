@@ -3,49 +3,53 @@ package socketmode
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 )
 
-// Event reformats the request into the approrpiate shape and attaches a Context.
+// Event contains the original request from Slack as well as the appropriately typed payload.
+// It also contains a cancellable context that allows the enforcement that each Event be
+// acknowledged at most once.
 type Event struct {
 	Request Request
-	Data    any
+	Payload any
 	Context context.Context
 
 	cancel context.CancelFunc
 }
 
-// newEvent constructs an Event given a request.
+// newEvent constructs an Event given a Request and Context.
 func newEvent(req *Request, ctx context.Context) (*Event, error) {
 	if req == nil {
 		return nil, ErrNilRequest
 	}
 
-	var data any
+	var payload any
 	switch req.Type {
 	case RequestTypeHello:
-		data = &slack.HelloEvent{}
+		payload = &slack.HelloEvent{}
 	case RequestTypeEventsAPI:
-		data = &slackevents.EventsAPIEvent{}
+		payload = &slackevents.EventsAPICallbackEvent{}
 	case RequestTypeDisconnect:
-		data = &slack.DisconnectedEvent{}
+		payload = &slack.DisconnectedEvent{}
 	case RequestTypeSlashCommands:
-		data = &slack.SlashCommand{}
+		payload = &slack.SlashCommand{}
 	case RequestTypeInteractive:
-		data = &slack.InteractionCallback{}
+		payload = &slack.InteractionCallback{}
 	default:
-		return nil, ErrUnrecognizedRequestType
+		return nil, fmt.Errorf("%s: %s", ErrUnexpectedRequestType, req.Type)
 	}
 
+	// Check here as the `hello` payload is empty
 	if len(req.Payload) > 0 {
-		if err := json.Unmarshal(req.Payload, data); err != nil {
+		if err := json.Unmarshal(req.Payload, payload); err != nil {
 			return nil, err
 		}
 	}
 
 	ctx, cancel := context.WithCancel(ctx)
 
-	return &Event{Request: *req, Data: data, Context: ctx, cancel: cancel}, nil
+	return &Event{Request: *req, Payload: payload, Context: ctx, cancel: cancel}, nil
 }

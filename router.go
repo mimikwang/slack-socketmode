@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 
+	"github.com/slack-go/slack"
+	"github.com/slack-go/slack/slackevents"
 	"golang.org/x/exp/slog"
 )
 
@@ -13,25 +15,32 @@ const (
 
 // Router routes incoming requests from slack
 type Router struct {
-	Client *Client
+	client *Client
 
 	parallel int
 
 	middlewares          []Middleware
 	handlers             map[RequestType][]Handler
 	slashCommandHandlers map[string][]Handler
-	eventsAPIHandlers    map[string][]Handler
+	eventsAPIHandlers    map[slackevents.EventsAPIType][]Handler
+	interactiveHandlers  map[slack.InteractionType][]Handler
+	shortcutHandlers     map[string][]Handler
+	blockActionHandlers  map[string][]Handler
 }
 
 // NewRouter constructs a Router given a socketmode Client
 func NewRouter(clt *Client) *Router {
 	return &Router{
-		Client:               clt,
-		parallel:             defaultParrallel,
+		client:   clt,
+		parallel: defaultParrallel,
+
 		middlewares:          []Middleware{},
 		handlers:             map[RequestType][]Handler{},
 		slashCommandHandlers: map[string][]Handler{},
-		eventsAPIHandlers:    map[string][]Handler{},
+		eventsAPIHandlers:    map[slackevents.EventsAPIType][]Handler{},
+		interactiveHandlers:  map[slack.InteractionType][]Handler{},
+		shortcutHandlers:     map[string][]Handler{},
+		blockActionHandlers:  map[string][]Handler{},
 	}
 }
 
@@ -40,13 +49,13 @@ type routerOpt interface {
 	apply(*Router)
 }
 
-// OptParralel sets the number of concurrent workers for the router.  This is ignored if the number
+// RouterOptParralel sets the number of concurrent workers for the router.  This is ignored if the number
 // is 0 or negative.
-type OptParralel struct {
+type RouterOptParralel struct {
 	Parralel int
 }
 
-func (o OptParralel) apply(r *Router) {
+func (o RouterOptParralel) apply(r *Router) {
 	if o.Parralel <= 0 {
 		return
 	}
@@ -60,7 +69,7 @@ func (r *Router) Start(ctx context.Context) error {
 	routerCtx, cancel := context.WithCancelCause(ctx)
 
 	go func(cancel context.CancelCauseFunc) {
-		if err := r.Client.Start(ctx); err != nil {
+		if err := r.client.Start(ctx); err != nil {
 			cancel(err)
 		}
 	}(cancel)
@@ -78,28 +87,28 @@ func (r *Router) Start(ctx context.Context) error {
 }
 
 func (r *Router) startWorker(i int, ctx context.Context) {
-	defer r.Client.logger.Info(fmt.Sprintf("shutting down router worker %d", i))
-	r.Client.logger.Info(fmt.Sprintf("starting router worker %d", i))
+	defer r.client.logger.Info(fmt.Sprintf("shutting down router worker %d", i))
+	r.client.logger.Info(fmt.Sprintf("starting router worker %d", i))
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		default:
-			evt, err := r.Client.Read()
+			evt, err := r.client.Read()
 			if err != nil {
-				r.Client.logger.Debug("client read error", slog.Any("error", err))
+				r.client.logger.Debug("client read error", slog.Any("error", err))
 				continue
 			}
 
-			r.Client.logger.Info(fmt.Sprintf("event routed by worker %d", i))
+			r.client.logger.Info(fmt.Sprintf("event routed by worker %d", i))
 			if evt == nil {
-				r.Client.logger.Info("router got nil event")
+				r.client.logger.Info("router got nil event")
 				continue
 			}
-			r.Client.logger.Debug(
+			r.client.logger.Debug(
 				"route event",
 				slog.Any("event_type", evt.Request.Type),
-				slog.Any("event_data", evt.Data),
+				slog.Any("event_payload", evt.Payload),
 			)
 			r.route(evt)
 		}
@@ -108,5 +117,8 @@ func (r *Router) startWorker(i int, ctx context.Context) {
 
 // Close cleans up resources
 func (r *Router) Close() error {
-	return r.Client.Close()
+	if r.client == nil {
+		return nil
+	}
+	return r.client.Close()
 }

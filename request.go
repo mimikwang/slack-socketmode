@@ -14,7 +14,7 @@ const (
 	RequestTypeSlashCommands = "slash_commands"
 )
 
-// Request is the incoming requests from slack
+// Request is the incoming request from slack
 type Request struct {
 	Type            RequestType     `json:"type"`
 	Reason          string          `json:"reason"`
@@ -28,12 +28,14 @@ type Request struct {
 	RetryReason     string          `json:"retry_reason"`
 }
 
+// DebugInfo is the `debug_info` portion of the incoming Request from Slack
 type DebugInfo struct {
 	Host                      string `json:"host"`
 	BuildNumber               int    `json:"build_number"`
 	ApproximateConnectionTime int    `json:"approximate_connection_time"`
 }
 
+// ConnectionInfo is the `connection_info` portion of the incoming Request from Slack
 type ConnectionInfo struct {
 	AppId string `json:"app_id"`
 }

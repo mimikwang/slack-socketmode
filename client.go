@@ -12,33 +12,37 @@ import (
 const (
 	defaultMaxPingInterval = 30 * time.Second
 	defaultMaxRetries      = 5
+	defaultRetryWaitTime   = 10 * time.Second
 )
 
-// Client interacts with slack in socketmode
+// Client interacts with Slack in socketmode.
 type Client struct {
 	// Slack's API Client
 	Api *slack.Client
 
-	// Websocket client
-	conn      *websocket.Conn
-	dialer    *websocket.Dialer
-	isStarted bool
+	// Websocket connection and dialer. The isConnected flag signifies if the Client is currently
+	// connected to Slack.
+	conn        *websocket.Conn
+	dialer      *websocket.Dialer
+	isConnected bool
 
-	// Logger
+	// Structured logger using the `slog` package
 	logger *slog.Logger
 
-	// Max time between pings before timing out
-	maxPingInterval time.Duration
-	pingTimer       *time.Timer
+	// Maximum time to wait between pings from Slack before killing the connection
+	pingTimeout time.Duration
+	pingTimer   *time.Timer
 
-	// Set to true to debug reconnects.
-	// More details here: https://api.slack.com/apis/connections/socket#connect
+	// Set to true to debug reconnects. More details at the following:
+	// https://api.slack.com/apis/connections/socket#connect
 	debugReconnects bool
 
-	// Maximum attempts at retrying reconnecting
-	maxRetries int
-	retries    int
+	// Maximum attempts at retrying connection and wait time between retries
+	maxRetries    int
+	retryWaitTime time.Duration
+	retries       int
 
+	// Communication channels
 	readCh chan *readPackage
 	sendCh chan *sendPackage
 	errCh  chan error
@@ -51,8 +55,9 @@ func NewClient(api *slack.Client, opts ...clientOpt) *Client {
 		logger: slog.Default(),
 		dialer: websocket.DefaultDialer,
 
-		maxPingInterval: defaultMaxPingInterval,
-		maxRetries:      defaultMaxRetries,
+		pingTimeout:   defaultMaxPingInterval,
+		maxRetries:    defaultMaxRetries,
+		retryWaitTime: defaultRetryWaitTime,
 
 		readCh: make(chan *readPackage),
 		sendCh: make(chan *sendPackage),
@@ -62,11 +67,6 @@ func NewClient(api *slack.Client, opts ...clientOpt) *Client {
 		opt.apply(c)
 	}
 	return c
-}
-
-// clientOpt defines input options for Client
-type clientOpt interface {
-	apply(*Client)
 }
 
 // OptDebugReconnects sets the `debugReconnects` flag to true.
@@ -90,35 +90,19 @@ func (o OptLogLevel) apply(c *Client) {
 	c.logger = slog.New(handler)
 }
 
-// OptMaxRetries sets the maximum times to retry connection.  0 or negative values will be ignored.
-type OptMaxRetries struct {
-	MaxRetires int
-}
-
-func (o OptMaxRetries) apply(c *Client) {
-	if o.MaxRetires <= 0 {
-		return
-	}
-	c.maxRetries = o.MaxRetires
-}
-
-// OptHandshakeTimeout sets a handshake time out.  0 or negative values will be ignored.
-type OptHandshakeTimeout struct {
-	Timeout time.Duration
-}
-
-func (o OptHandshakeTimeout) apply(c *Client) {
-	if o.Timeout <= 0 {
-		return
-	}
-	c.dialer = &websocket.Dialer{
-		HandshakeTimeout: o.Timeout,
-	}
-}
-
 // Close cleans up resources
 func (c *Client) Close() error {
-	c.isStarted = false
+	if c.isConnected && c.conn != nil {
+		// Send a control message to Slack to close the connection
+		if err := c.conn.WriteControl(
+			websocket.CloseMessage,
+			nil,
+			time.Now().Add(30*time.Second),
+		); err != nil {
+			return err
+		}
+	}
+	c.isConnected = false
 	if c.conn == nil {
 		return nil
 	}

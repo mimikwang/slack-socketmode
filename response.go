@@ -2,7 +2,7 @@ package socketmode
 
 import "encoding/json"
 
-// Response is what slack expects as a response. It should be called with `Ack`.
+// Response is what slack expects as a response. It should be called with `Ack` once.
 type Response struct {
 	EnvelopeId string          `json:"envelope_id"`
 	Payload    json.RawMessage `json:"payload"`

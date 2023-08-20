@@ -9,21 +9,25 @@ func (r *Router) Use(m Middleware) {
 }
 
 func (r *Router) initMiddlewares() {
-	applyMiddlewares(r.middlewares, r.handlers)
-	applyMiddlewares(r.middlewares, r.slashCommandHandlers)
-	applyMiddlewares(r.middlewares, r.eventsAPIHandlers)
+	applyMiddlewaresToMap(r.middlewares, r.handlers)
+	applyMiddlewaresToMap(r.middlewares, r.slashCommandHandlers)
+	applyMiddlewaresToMap(r.middlewares, r.eventsAPIHandlers)
+	applyMiddlewaresToMap(r.middlewares, r.interactiveHandlers)
+	applyMiddlewaresToMap(r.middlewares, r.shortcutHandlers)
+	applyMiddlewaresToMap(r.middlewares, r.blockActionHandlers)
 }
 
-type mapKey interface {
-	string | RequestType
-}
-
-func applyMiddlewares[T mapKey](middlewares []Middleware, handlersMap map[T][]Handler) {
+func applyMiddlewaresToMap[T comparable](middlewares []Middleware, handlersMap map[T][]Handler) {
 	for key, handlers := range handlersMap {
 		for i, handler := range handlers {
-			for _, m := range middlewares {
-				handlersMap[key][i] = m(handler)
-			}
+			handlersMap[key][i] = applyMiddlewares(handler, middlewares...)
 		}
 	}
+}
+
+func applyMiddlewares(handler Handler, middlewares ...Middleware) Handler {
+	for _, m := range middlewares {
+		handler = m(handler)
+	}
+	return handler
 }

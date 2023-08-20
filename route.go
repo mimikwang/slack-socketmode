@@ -1,57 +1,76 @@
 package socketmode
 
 import (
+	"encoding/json"
+
 	"github.com/slack-go/slack"
 	"github.com/slack-go/slack/slackevents"
 )
 
 func (r *Router) route(evt *Event) {
-	if r.routeEvent(evt) {
-		return
+	switch evt.Request.Type {
+	case RequestTypeEventsAPI:
+		if r.routeEventsAPI(evt) {
+			return
+		}
+	case RequestTypeSlashCommands:
+		if r.routeSlashCommand(evt) {
+			return
+		}
+	case RequestTypeInteractive:
+		if r.routeInteractive(evt) {
+			return
+		}
 	}
-	if r.routeSlashCommand(evt) {
-		return
-	}
-	if r.routeEventsAPI(evt) {
-		return
-	}
+	r.routeEvent(evt)
 }
 
 func (r *Router) routeEvent(evt *Event) bool {
-	if handlers, found := r.handlers[evt.Request.Type]; found {
-		applyHandlers(evt, r.Client, handlers)
-	}
-	return false
+	return applyHandlersMap(evt, r.client, r.handlers, evt.Request.Type)
 }
 
 func (r *Router) routeSlashCommand(evt *Event) bool {
-	if evt.Request.Type != RequestTypeSlashCommands {
-		return false
-	}
+	data := evt.Payload.(*slack.SlashCommand)
+	return applyHandlersMap(evt, r.client, r.slashCommandHandlers, data.Command)
+}
 
-	data, ok := evt.Data.(*slack.SlashCommand)
-	if !ok {
-		return false
-	}
-
-	if handlers, found := r.slashCommandHandlers[data.Command]; found {
-		applyHandlers(evt, r.Client, handlers)
-	}
-	return false
+type eventType struct {
+	Type string `json:"type"`
 }
 
 func (r *Router) routeEventsAPI(evt *Event) bool {
-	if evt.Request.Type != RequestTypeEventsAPI {
+	payload := evt.Payload.(*slackevents.EventsAPICallbackEvent)
+
+	var innerType eventType
+	if err := json.Unmarshal(*payload.InnerEvent, &innerType); err != nil {
 		return false
 	}
 
-	data, ok := evt.Data.(*slackevents.EventsAPIEvent)
-	if !ok {
-		return false
+	return applyHandlersMap(evt, r.client, r.eventsAPIHandlers, slackevents.EventsAPIType(innerType.Type))
+}
+
+func (r *Router) routeInteractive(evt *Event) bool {
+	data := evt.Payload.(*slack.InteractionCallback)
+
+	switch data.Type {
+	case slack.InteractionTypeShortcut, slack.InteractionTypeMessageAction:
+		if applyHandlersMap(evt, r.client, r.shortcutHandlers, data.CallbackID) {
+			return true
+		}
+	case slack.InteractionTypeBlockActions:
+		for _, action := range data.ActionCallback.BlockActions {
+			if applyHandlersMap(evt, r.client, r.blockActionHandlers, action.ActionID) {
+				return true
+			}
+		}
 	}
 
-	if handlers, found := r.eventsAPIHandlers[data.InnerEvent.Type]; found {
-		applyHandlers(evt, r.Client, handlers)
+	return applyHandlersMap(evt, r.client, r.interactiveHandlers, data.Type)
+}
+
+func applyHandlersMap[T comparable](evt *Event, clt *Client, lookup map[T][]Handler, key T) bool {
+	if handlers, found := lookup[key]; found {
+		return applyHandlers(evt, clt, handlers)
 	}
 	return false
 }
