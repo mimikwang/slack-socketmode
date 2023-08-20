@@ -5,12 +5,14 @@ import (
 	"fmt"
 )
 
+// Custom package errors
+
 var (
-	ErrPingTimedOut            = fmt.Errorf("ping timed out")
-	ErrDisconnectRequest       = fmt.Errorf("disconnected event")
-	ErrNilRequest              = fmt.Errorf("nil request")
-	ErrUnrecognizedRequestType = fmt.Errorf("unrecognized request type")
-	ErrConnClosed              = fmt.Errorf("connection closed")
+	ErrPingTimeout           = fmt.Errorf("timeout waiting for pings from Slack")
+	ErrDisconnectRequest     = fmt.Errorf("received disconnected request from Slack")
+	ErrNilRequest            = fmt.Errorf("received nil request")
+	ErrUnexpectedRequestType = fmt.Errorf("unexpected Request type")
+	ErrConnClosed            = fmt.Errorf("websocket connection is closed")
 )
 
 // handleErrors listens for errors and calls the cancel function when one is received.

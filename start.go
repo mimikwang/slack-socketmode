@@ -51,14 +51,15 @@ func (c *Client) start(ctx context.Context) error {
 	go c.handleSend(ctx)
 	go c.handleErrors(ctx, cancel)
 
-	c.isStarted = true
+	c.isConnected = true
 	c.logger.Info("client started successfully")
 
 	<-ctx.Done()
-	c.isStarted = false // This needs to be set before connection is closed
 
 	// Close connection
-	c.conn.Close()
+	if err := c.conn.Close(); err != nil {
+		return err
+	}
 
 	err := context.Cause(ctx)
 	c.logger.Info("connection failed with error", slog.Any("error", err))
@@ -83,7 +84,7 @@ func (c *Client) connect(ctx context.Context) error {
 		return err
 	}
 
-	c.pingTimer = time.NewTimer(c.maxPingInterval)
+	c.pingTimer = time.NewTimer(c.pingTimeout)
 	c.conn.SetPingHandler(pingHandlerFunc(c))
 	c.logger.Info("successfully performed websocket handshake")
 	return nil
@@ -96,7 +97,7 @@ func pingHandlerFunc(c *Client) func(string) error {
 		if !c.pingTimer.Stop() {
 			<-c.pingTimer.C
 		}
-		c.pingTimer.Reset(c.maxPingInterval)
+		c.pingTimer.Reset(c.pingTimeout)
 
 		return c.conn.WriteControl(websocket.PongMessage, []byte(h), time.Now().Add(defaultPingDeadline))
 	}
@@ -111,7 +112,7 @@ func (c *Client) handlePings(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-c.pingTimer.C:
-			c.errCh <- ErrPingTimedOut
+			c.errCh <- ErrPingTimeout
 		default:
 			time.Sleep(defaultHandlePingInterval)
 		}

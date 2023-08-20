@@ -38,7 +38,7 @@ func (c *Client) handleRead(ctx context.Context) {
 				// `c.conn.ReadJSON` one time, which will result in a read from closed connection
 				// error.  That should be the only time that is called when the connection is not
 				// started, because the next loop should catch `ctx.Done()`.
-				if c.isStarted {
+				if c.isConnected {
 					c.errCh <- err
 				}
 				return
