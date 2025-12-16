@@ -1,6 +1,6 @@
 module github.com/mimikwang/slack-socketmode
 
-go 1.20
+go 1.24
 
 require github.com/slack-go/slack v0.12.2
 
